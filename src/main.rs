@@ -6,10 +6,9 @@ use futures::stream::{self, StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use interceptors::NetworkMonitoringInterceptor;
 use structopt::StructOpt;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
 mod interceptors;
-
 
 enum OutputTarget {
     Stdout,
@@ -72,7 +71,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let byte_progress = ProgressBar::new_spinner();
     byte_progress.set_style(
-        ProgressStyle::default_spinner().template("{spinner:.green} Downloaded {total_bytes} bytes ({bytes_per_sec}/sec)")?,
+        ProgressStyle::default_spinner()
+            .template("{spinner:.green} Downloaded {total_bytes} bytes ({bytes_per_sec}/sec)")?,
     );
 
     let m = MultiProgress::new();
@@ -109,7 +109,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         return;
                     }
 
-                    match search_object(&client, &bucket, &key, &pattern, case_sensitive, byte_progress).await {
+                    match search_object(
+                        &client,
+                        &bucket,
+                        &key,
+                        &pattern,
+                        case_sensitive,
+                        byte_progress,
+                    )
+                    .await
+                    {
                         Ok(matches) => {
                             for (line_num, line) in matches {
                                 let msg = if line_numbers {
@@ -145,7 +154,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     progress.as_ref(),
                     format!("Error listing objects: {}", e).as_str(),
                     OutputTarget::Stderr,
-                )
+                ),
             }
         }
     })
@@ -254,43 +263,44 @@ async fn search_object(
 ) -> Result<Vec<(usize, String)>, Box<dyn std::error::Error>> {
     let resp = client.get_object().bucket(bucket).key(key).send().await?;
 
-    // TODO: Read this better
-    // https://github.com/awslabs/aws-sdk-rust/blob/6b184dac648de9389afb888cc1fa54355d6d6ce2/examples/examples/s3/src/bin/get-object.rs#L41
-
-    let mut body = Vec::new();
-
     // Add support for .gz files
     let gz_compression = key.ends_with(".gz");
 
-    byte_progress.inc(resp.body.size_hint().0);
-
-    if gz_compression {
-        // If it's GZIP, use a GzDecoder to decompress
-        let mut decoder = GzipDecoder::new(resp.body.into_async_read());
-        decoder.read_to_end(&mut body).await?;
+    let body = resp.body.into_async_read();
+    let mut reader: Box<dyn tokio::io::AsyncBufRead + Unpin> = if gz_compression {
+        Box::new(BufReader::new(GzipDecoder::new(body)))
     } else {
-        resp.body.into_async_read().read_to_end(&mut body).await?;
+        Box::new(BufReader::new(body))
+    };
+
+    // Read the first few bytes to check if the file is binary
+    let mut buffer = [0; 1024];
+    let n = reader.read(&mut buffer).await?;
+    let is_binary = buffer[..n].contains(&0);
+
+    let mut matches = Vec::new();
+    let mut lines = reader.lines();
+    let mut line_num = 0;
+
+    while let Some(line) = lines.next_line().await? {
+        line_num += 1;
+        byte_progress.inc(line.len() as u64);
+        
+        if (case_sensitive && line.contains(pattern))
+            || (!case_sensitive && line.to_lowercase().contains(&pattern.to_lowercase()))
+        {
+            matches.push((line_num, line));
+        }
     }
 
-    let content = String::from_utf8_lossy(&body);
-    // This makes the transfer rate seem faster b/c we're incrementing gunziped bytes
-    // byte_progress.inc(body.len() as u64);
-    // println!("{}: {}", key, content);
-    let matches: Vec<(usize, String)> = content
-        .lines()
-        .enumerate()
-        .filter(|(_, line)| {
-            // println!("Checking if {} contains {}? {}", line, pattern, line.to_lowercase().contains(&pattern.to_lowercase()));
-            if case_sensitive {
-                line.contains(pattern)
-            } else {
-                line.to_lowercase().contains(&pattern.to_lowercase())
-            }
-        })
-        .map(|(i, line)| (i + 1, line.to_string())) // Convert to 1-based line numbers
-        .collect();
-
-    // println!("{}", matches);
+    if is_binary && !matches.is_empty() {
+        print_with_target(
+            Some(&byte_progress),
+            format!("Binary file {} matches", key).as_str(),
+            OutputTarget::Stdout,
+        );
+        return Ok(Vec::new());
+    }
     Ok(matches)
 }
 
