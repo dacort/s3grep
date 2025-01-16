@@ -1643,6 +1643,8 @@ dependencies = [
  "async-compression",
  "aws-config",
  "aws-sdk-s3",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
  "colored",
  "futures",
  "indicatif",

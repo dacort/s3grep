@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 aws-config = "1.5.13"
 aws-sdk-s3 = "1.68.0"
+aws-smithy-runtime-api = "1.7.3"
+aws-smithy-types = "1.2.12"
 tokio = { version = "1.43.0", features = ["full"] }
 tokio-stream = "0.1"
 futures = "0.3"

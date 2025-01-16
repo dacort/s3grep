@@ -3,9 +3,13 @@ use aws_config::BehaviorVersion;
 use aws_sdk_s3::Client;
 use colored::*;
 use futures::stream::{self, StreamExt};
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use interceptors::NetworkMonitoringInterceptor;
 use structopt::StructOpt;
 use tokio::io::AsyncReadExt;
+
+mod interceptors;
+
 
 enum OutputTarget {
     Stdout,
@@ -50,6 +54,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize AWS client
     let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
+    let s3_conf = aws_sdk_s3::config::Builder::from(&config)
+        .interceptor(NetworkMonitoringInterceptor)
+        .build();
     let client = Client::new(&config);
 
     // Create a progress bar that we'll update as we discover objects
@@ -63,6 +70,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    let byte_progress = ProgressBar::new_spinner();
+    byte_progress.set_style(
+        ProgressStyle::default_spinner().template("{spinner:.green} Downloaded {total_bytes} bytes ({bytes_per_sec}/sec)")?,
+    );
+
+    let m = MultiProgress::new();
+    if let Some(ref p) = progress {
+        m.add(p.clone());
+        m.insert_after(&p, byte_progress.clone());
+    }
 
     // Stream objects and process them concurrently
     let object_stream = list_objects_stream(&client, &opt.bucket, &opt.prefix);
@@ -73,6 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let bucket = opt.bucket.clone();
         let case_sensitive = opt.case_sensitive;
         let progress = progress.clone();
+        let byte_progress = byte_progress.clone();
         let line_numbers = opt.line_number;
 
         async move {
@@ -91,7 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         return;
                     }
 
-                    match search_object(&client, &bucket, &key, &pattern, case_sensitive).await {
+                    match search_object(&client, &bucket, &key, &pattern, case_sensitive, byte_progress).await {
                         Ok(matches) => {
                             for (line_num, line) in matches {
                                 let msg = if line_numbers {
@@ -137,6 +155,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(p) = progress {
         // p.finish_and_clear();
         p.finish_with_message("Search complete");
+        byte_progress.finish();
     }
     // progress.finish_with_message("Search complete");
 
@@ -231,13 +250,19 @@ async fn search_object(
     key: &str,
     pattern: &str,
     case_sensitive: bool,
+    byte_progress: ProgressBar,
 ) -> Result<Vec<(usize, String)>, Box<dyn std::error::Error>> {
     let resp = client.get_object().bucket(bucket).key(key).send().await?;
+
+    // TODO: Read this better
+    // https://github.com/awslabs/aws-sdk-rust/blob/6b184dac648de9389afb888cc1fa54355d6d6ce2/examples/examples/s3/src/bin/get-object.rs#L41
 
     let mut body = Vec::new();
 
     // Add support for .gz files
     let gz_compression = key.ends_with(".gz");
+
+    byte_progress.inc(resp.body.size_hint().0);
 
     if gz_compression {
         // If it's GZIP, use a GzDecoder to decompress
@@ -248,6 +273,8 @@ async fn search_object(
     }
 
     let content = String::from_utf8_lossy(&body);
+    // This makes the transfer rate seem faster b/c we're incrementing gunziped bytes
+    // byte_progress.inc(body.len() as u64);
     // println!("{}: {}", key, content);
     let matches: Vec<(usize, String)> = content
         .lines()
