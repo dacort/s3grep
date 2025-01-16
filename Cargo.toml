@@ -12,3 +12,4 @@ futures = "0.3"
 structopt = "0.3"
 colored = "2.0"
 indicatif = "0.17"
+async-compression = { version = "0.3.12", features = ["tokio", "gzip"] }
