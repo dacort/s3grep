@@ -5,8 +5,12 @@ use colored::*;
 use futures::stream::{self, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use structopt::StructOpt;
-use tokio::io::{AsyncReadExt, BufReader};
-use tokio_stream::StreamExt as _;
+use tokio::io::AsyncReadExt;
+
+enum OutputTarget {
+    Stdout,
+    Stderr,
+}
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "s3grep", about = "Fast parallel grep for S3 logs")]
@@ -75,7 +79,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             match obj {
                 Ok(key) => {
                     if key.ends_with('/') {
-                        eprintln!("s3grep: {}: Is a directory", key);
+                        print_with_target(
+                            progress.as_ref(),
+                            format!("{}: Is a directory", key).as_str(),
+                            OutputTarget::Stderr,
+                        );
+
                         if let Some(p) = &progress {
                             p.inc(1);
                         }
@@ -86,34 +95,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Ok(matches) => {
                             for (line_num, line) in matches {
                                 let msg = if line_numbers {
-                                    format!("s3://{}/{}:{}:{}",
+                                    format!(
+                                        "s3://{}/{}:{}:{}",
                                         bucket,
                                         key,
                                         line_num,
-                                        highlight_match(&line, &pattern))
+                                        highlight_match(&line, &pattern)
+                                    )
                                 } else {
-                                    format!("s3://{}/{}:{}",
+                                    format!(
+                                        "s3://{}/{}:{}",
                                         bucket,
                                         key,
-                                        highlight_match(&line, &pattern))
+                                        highlight_match(&line, &pattern)
+                                    )
                                 };
-                                if let Some(p) = &progress {
-                                    // p.println(msg);
-                                    p.suspend(|| {
-                                        println!("{}", msg);
-                                    });
-                                } else {
-                                    println!("{}", msg);
-                                }
+                                print_with_target(progress.as_ref(), &msg, OutputTarget::Stdout);
                             }
                         }
-                        Err(e) => eprintln!("s3grep: {}: {}", key, e),
+                        Err(e) => print_with_target(
+                            progress.as_ref(),
+                            format!("{}: {}", key, e).as_str(),
+                            OutputTarget::Stderr,
+                        ),
                     }
                     if let Some(p) = &progress {
                         p.inc(1);
                     }
                 }
-                Err(e) => eprintln!("s3grep: Error listing objects: {}", e),
+                Err(e) => print_with_target(
+                    progress.as_ref(),
+                    format!("Error listing objects: {}", e).as_str(),
+                    OutputTarget::Stderr,
+                )
             }
         }
     })
@@ -127,6 +141,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // progress.finish_with_message("Search complete");
 
     Ok(())
+}
+
+fn print_message_with_progress<F>(progress: Option<&ProgressBar>, msg: &str, output_fn: F)
+where
+    F: Fn(&str),
+{
+    if let Some(p) = progress {
+        p.suspend(|| output_fn(msg));
+    } else {
+        output_fn(msg);
+    }
+}
+
+fn print_with_target(progress: Option<&ProgressBar>, msg: &str, target: OutputTarget) {
+    match target {
+        OutputTarget::Stdout => print_message_with_progress(progress, msg, |m| println!("{}", m)),
+        OutputTarget::Stderr => {
+            print_message_with_progress(progress, msg, |m| eprintln!("s3grep: {}", m))
+        }
+    }
 }
 
 fn list_objects_stream<'a>(
@@ -178,7 +212,7 @@ fn list_objects_stream<'a>(
                         ))
                     }
                 }
-                Err(e) => {
+                Err(_) => {
                     let empty_vec: Vec<String> = vec![];
                     let error_stream = empty_vec
                         .into_iter()
