@@ -253,6 +253,18 @@ fn list_objects_stream<'a>(
     .flatten()
 }
 
+async fn is_binary(reader: &mut (impl tokio::io::AsyncRead + Unpin)) -> std::io::Result<bool> {
+    // let mut buffer = [0; 1024];
+    // let n = reader.read(&mut buffer).await?;
+    // Ok(buffer[..n].contains(&0))
+    let mut bufreader = BufReader::new(reader);
+    if let Ok(bytes) = bufreader.fill_buf().await {
+        Ok(bytes.iter().take(1024).any(|&b| b == 0))
+    } else {
+        Ok(false)
+    }
+}
+
 async fn search_object(
     client: &Client,
     bucket: &str,
@@ -265,7 +277,6 @@ async fn search_object(
 
     // Add support for .gz files
     let gz_compression = key.ends_with(".gz");
-
     let body = resp.body.into_async_read();
     let mut reader: Box<dyn tokio::io::AsyncBufRead + Unpin> = if gz_compression {
         Box::new(BufReader::new(GzipDecoder::new(body)))
@@ -273,19 +284,54 @@ async fn search_object(
         Box::new(BufReader::new(body))
     };
 
-    // Read the first few bytes to check if the file is binary
-    let mut buffer = [0; 1024];
-    let n = reader.read(&mut buffer).await?;
-    let is_binary = buffer[..n].contains(&0);
+    // Binary flag
+    let mut is_binary = false; //is_binary(&mut reader).await?;
 
     let mut matches = Vec::new();
-    let mut lines = reader.lines();
+    let mut line_buffer = Vec::new();
     let mut line_num = 0;
 
-    while let Some(line) = lines.next_line().await? {
+    loop {
+        let bytes = reader.fill_buf().await?;
+        if bytes.is_empty() {
+            break;
+        }
+
+        // Check for NUL bytes in current buffer
+        if !is_binary && bytes.iter().any(|&b| b == 0) {
+            is_binary = true;
+        }
+
+        for &byte in bytes {
+            if byte == b'\n' {
+                line_num += 1;
+                let line = String::from_utf8_lossy(&line_buffer).to_string();
+                byte_progress.inc(line_buffer.len() as u64);
+
+                if (case_sensitive && line.contains(pattern))
+                    || (!case_sensitive && line.to_lowercase().contains(&pattern.to_lowercase()))
+                {
+                    if is_binary {
+                        break;
+                    }
+                    matches.push((line_num, line));
+                }
+                line_buffer.clear();
+            } else {
+                line_buffer.push(byte);
+            }
+        }
+
+        let length = bytes.len();
+        reader.consume(length);
+    }
+
+    // Handle last line if it doesn't end with a newline
+    if !line_buffer.is_empty() {
         line_num += 1;
-        byte_progress.inc(line.len() as u64);
-        
+        let line = String::from_utf8_lossy(&line_buffer).to_string();
+        byte_progress.inc(line_buffer.len() as u64);
+
         if (case_sensitive && line.contains(pattern))
             || (!case_sensitive && line.to_lowercase().contains(&pattern.to_lowercase()))
         {
