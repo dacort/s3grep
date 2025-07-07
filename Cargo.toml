@@ -8,6 +8,7 @@ repository = "https://github.com/dacort/s3grep"
 homepage = "https://github.com/dacort/s3grep"
 keywords = ["s3", "grep", "aws", "cli", "logs"]
 categories = ["command-line-utilities", "text-processing", "cloud"]
+publish = true
 
 [dependencies]
 aws-config = "1.5.13"
