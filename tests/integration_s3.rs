@@ -1,21 +1,14 @@
 #[cfg(test)]
 mod integration_s3 {
-    use aws_sdk_s3::Client;
     use aws_sdk_s3::config::{Credentials, Region};
-    use std::env;
+    use aws_sdk_s3::Client;
 
     #[tokio::test]
     async fn test_list_buckets_localstack() {
         // Set up Localstack endpoint and credentials
         let endpoint = "http://localhost:4566";
         let region = Region::new("us-east-1");
-        let credentials = Credentials::new(
-            "test",
-            "test",
-            None,
-            None,
-            "localstack",
-        );
+        let credentials = Credentials::new("test", "test", None, None, "localstack");
         let config = aws_sdk_s3::config::Builder::new()
             .region(region)
             .endpoint_url(endpoint)

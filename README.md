@@ -22,15 +22,11 @@ I use `grep` almost daily, but often deal with unstructured content and logs on 
 
 ## Installation
 
-### With Cargo
-
-```sh
-cargo install s3grep
-```
-
 ### Pre-built Binaries
 
-Pre-built binaries are available on the [Releases page](https://github.com/dacort/s3grep/releases).
+For now, just `git clone` and `cargo build`. 😁
+
+Pre-built binaries (will be) available on the [Releases page](https://github.com/dacort/s3grep/releases).
 
 ---
 

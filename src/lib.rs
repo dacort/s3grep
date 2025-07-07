@@ -1,5 +1,3 @@
-/// Utility functions for s3grep
-
 /**
     Returns true if the given line contains the pattern, respecting case sensitivity.
 

@@ -61,12 +61,12 @@ impl Intercept for NetworkMonitoringInterceptor {
         if let Some(response) = context.response() {
             let size_hint = response.body().content_length();
             let estimated_size = size_hint.unwrap_or(0);
-            println!("Response size: {} bytes (estimated)", estimated_size);
+            println!("Response size: {estimated_size} bytes (estimated)");
 
             // Calculate elapsed time
             if let Some(start_time) = cfg.interceptor_state().load::<StartTime>() {
                 let duration = start_time.0.elapsed();
-                println!("Request duration: {:?}", duration);
+                println!("Request duration: {duration:?}");
             }
         }
 

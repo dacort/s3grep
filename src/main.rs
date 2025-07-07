@@ -11,11 +11,11 @@ use colored::*;
 use futures::stream::{self, StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use interceptors::NetworkMonitoringInterceptor;
+use s3grep::line_matches;
 use structopt::StructOpt;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 mod interceptors;
-mod lib;
 
 /// Output target for printing messages.
 enum OutputTarget {
@@ -62,7 +62,7 @@ use anyhow::Result;
 async fn main() {
     if let Err(e) = run().await {
         // Print a user-friendly error message and exit with code 1
-        eprintln!("s3grep error: {:#}", e);
+        eprintln!("s3grep error: {e:#}");
         std::process::exit(1);
     }
 }
@@ -79,7 +79,7 @@ async fn run() -> Result<()> {
 
     // Initialize AWS client
     let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
-    let s3_conf = aws_sdk_s3::config::Builder::from(&config)
+    let _s3_conf = aws_sdk_s3::config::Builder::from(&config)
         .interceptor(NetworkMonitoringInterceptor)
         .build();
     let client = Client::new(&config);
@@ -104,7 +104,7 @@ async fn run() -> Result<()> {
     let m = MultiProgress::new();
     if let Some(ref p) = progress {
         m.add(p.clone());
-        m.insert_after(&p, byte_progress.clone());
+        m.insert_after(p, byte_progress.clone());
     }
 
     // Stream objects and process them concurrently
@@ -125,7 +125,7 @@ async fn run() -> Result<()> {
                     if key.ends_with('/') {
                         print_with_target(
                             progress.as_ref(),
-                            format!("{}: Is a directory", key).as_str(),
+                            format!("{key}: Is a directory").as_str(),
                             OutputTarget::Stderr,
                         );
 
@@ -168,7 +168,7 @@ async fn run() -> Result<()> {
                         }
                         Err(e) => print_with_target(
                             progress.as_ref(),
-                            format!("{}: {}", key, e).as_str(),
+                            format!("{key}: {e}").as_str(),
                             OutputTarget::Stderr,
                         ),
                     }
@@ -178,7 +178,7 @@ async fn run() -> Result<()> {
                 }
                 Err(e) => print_with_target(
                     progress.as_ref(),
-                    format!("Error listing objects: {}", e).as_str(),
+                    format!("Error listing objects: {e}").as_str(),
                     OutputTarget::Stderr,
                 ),
             }
@@ -228,9 +228,9 @@ where
 */
 fn print_with_target(progress: Option<&ProgressBar>, msg: &str, target: OutputTarget) {
     match target {
-        OutputTarget::Stdout => print_message_with_progress(progress, msg, |m| println!("{}", m)),
+        OutputTarget::Stdout => print_message_with_progress(progress, msg, |m| println!("{m}")),
         OutputTarget::Stderr => {
-            print_message_with_progress(progress, msg, |m| eprintln!("s3grep: {}", m))
+            print_message_with_progress(progress, msg, |m| eprintln!("s3grep: {m}"))
         }
     }
 }
@@ -298,7 +298,7 @@ fn list_objects_stream<'a>(
                     }
                 }
                 Err(e) => {
-                    eprintln!("Error listing objects: {}", e);
+                    eprintln!("Error listing objects: {e}");
                     let empty_vec: Vec<String> = vec![];
                     let error_stream = empty_vec
                         .into_iter()
@@ -309,26 +309,6 @@ fn list_objects_stream<'a>(
         },
     )
     .flatten()
-}
-
-/**
-    Checks if a file is binary by looking for NUL bytes in the first 1024 bytes.
-
-    # Arguments
-
-    * `reader` - Async reader for the file.
-
-    # Returns
-
-    `Ok(true)` if the file is binary, otherwise `Ok(false)`.
-*/
-async fn is_binary(reader: &mut (impl tokio::io::AsyncRead + Unpin)) -> std::io::Result<bool> {
-    let mut bufreader = BufReader::new(reader);
-    if let Ok(bytes) = bufreader.fill_buf().await {
-        Ok(bytes.iter().take(1024).any(|&b| b == 0))
-    } else {
-        Ok(false)
-    }
 }
 
 async fn search_object(
@@ -364,7 +344,7 @@ async fn search_object(
         }
 
         // Check for NUL bytes in current buffer
-        if !is_binary && bytes.iter().any(|&b| b == 0) {
+        if !is_binary && bytes.contains(&0) {
             is_binary = true;
         }
 
@@ -374,7 +354,7 @@ async fn search_object(
                 let line = String::from_utf8_lossy(&line_buffer).to_string();
                 byte_progress.inc(line_buffer.len() as u64);
 
-                if lib::line_matches(&line, pattern, case_sensitive) {
+                if line_matches(&line, pattern, case_sensitive) {
                     if is_binary {
                         break;
                     }
@@ -396,7 +376,7 @@ async fn search_object(
         let line = String::from_utf8_lossy(&line_buffer).to_string();
         byte_progress.inc(line_buffer.len() as u64);
 
-        if lib::line_matches(&line, pattern, case_sensitive) {
+        if line_matches(&line, pattern, case_sensitive) {
             matches.push((line_num, line));
         }
     }
@@ -404,7 +384,7 @@ async fn search_object(
     if is_binary && !matches.is_empty() {
         print_with_target(
             Some(&byte_progress),
-            format!("Binary file {} matches", key).as_str(),
+            format!("Binary file {key} matches").as_str(),
             OutputTarget::Stdout,
         );
         return Ok(Vec::new());
