@@ -176,11 +176,23 @@ async fn run() -> Result<()> {
                         p.inc(1);
                     }
                 }
-                Err(e) => print_with_target(
-                    progress.as_ref(),
-                    format!("Error listing objects: {e}").as_str(),
-                    OutputTarget::Stderr,
-                ),
+                Err(e) => {
+                    print_with_target(
+                        progress.as_ref(),
+                        format!("Error listing objects: {e}").as_str(),
+                        OutputTarget::Stderr,
+                    );
+                    // Print the error source chain for more detail
+                    let mut source = e.source();
+                    while let Some(s) = source {
+                        print_with_target(
+                            progress.as_ref(),
+                            format!("  caused by: {s}").as_str(),
+                            OutputTarget::Stderr,
+                        );
+                        source = s.source();
+                    }
+                }
             }
         }
     })
