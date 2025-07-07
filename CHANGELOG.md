@@ -11,17 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- publish
+- publish 🚀
 
 ### Other
 
 - Use the official setup-localstack action
-- linting/clipping
-- Clean up some of the AI slop
-- 🚀
-- Add missing files
 - Detect binary files, fail early if binary and a match :)
-- Intermittent checkin - trying to handle binary files too...
 - Add byte progress
 - Clean up err output
 - Add gzip support and lint
