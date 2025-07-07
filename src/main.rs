@@ -1,3 +1,9 @@
+/*!
+`s3grep` - Fast parallel grep for S3 logs
+
+A CLI tool for searching logs and unstructured content in AWS S3 buckets.
+*/
+
 use async_compression::tokio::bufread::GzipDecoder;
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::Client;
@@ -6,15 +12,22 @@ use futures::stream::{self, StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use interceptors::NetworkMonitoringInterceptor;
 use structopt::StructOpt;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 mod interceptors;
+mod lib;
 
+/// Output target for printing messages.
 enum OutputTarget {
     Stdout,
     Stderr,
 }
 
+/**
+    Command-line options for s3grep.
+
+    Use `Opt::from_args()` to parse from command line.
+*/
 #[derive(StructOpt, Debug)]
 #[structopt(name = "s3grep", about = "Fast parallel grep for S3 logs")]
 struct Opt {
@@ -47,8 +60,26 @@ struct Opt {
     line_number: bool,
 }
 
+use anyhow::Result;
+
+/// Entry point for the s3grep CLI application.
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() {
+    if let Err(e) = run().await {
+        // Print a user-friendly error message and exit with code 1
+        eprintln!("s3grep error: {:#}", e);
+        std::process::exit(1);
+    }
+}
+
+/// Main application logic for s3grep.
+/// Returns Ok(()) on success, or an error on failure.
+/**
+    Main application logic for s3grep.
+
+    Returns Ok(()) on success, or an error on failure.
+*/
+async fn run() -> Result<()> {
     let opt = Opt::from_args();
 
     // Initialize AWS client
@@ -171,6 +202,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/**
+    Prints a message, suspending the progress bar if present.
+
+    # Arguments
+
+    * `progress` - Optional progress bar to suspend.
+    * `msg` - The message to print.
+    * `output_fn` - Function to use for output (e.g., println! or eprintln!).
+*/
 fn print_message_with_progress<F>(progress: Option<&ProgressBar>, msg: &str, output_fn: F)
 where
     F: Fn(&str),
@@ -182,6 +222,15 @@ where
     }
 }
 
+/**
+    Prints a message to the specified output target, suspending the progress bar if present.
+
+    # Arguments
+
+    * `progress` - Optional progress bar to suspend.
+    * `msg` - The message to print.
+    * `target` - Output target (Stdout or Stderr).
+*/
 fn print_with_target(progress: Option<&ProgressBar>, msg: &str, target: OutputTarget) {
     match target {
         OutputTarget::Stdout => print_message_with_progress(progress, msg, |m| println!("{}", m)),
@@ -191,6 +240,19 @@ fn print_with_target(progress: Option<&ProgressBar>, msg: &str, target: OutputTa
     }
 }
 
+/**
+    Streams S3 object keys from the specified bucket and prefix.
+
+    # Arguments
+
+    * `client` - AWS S3 client.
+    * `bucket` - S3 bucket name.
+    * `prefix` - S3 prefix to search in.
+
+    # Returns
+
+    A stream of object keys as `Result<String, Box<dyn std::error::Error>>`.
+*/
 fn list_objects_stream<'a>(
     client: &'a Client,
     bucket: &'a str,
@@ -240,7 +302,8 @@ fn list_objects_stream<'a>(
                         ))
                     }
                 }
-                Err(_) => {
+                Err(e) => {
+                    eprintln!("Error listing objects: {}", e);
                     let empty_vec: Vec<String> = vec![];
                     let error_stream = empty_vec
                         .into_iter()
@@ -253,10 +316,18 @@ fn list_objects_stream<'a>(
     .flatten()
 }
 
+/**
+    Checks if a file is binary by looking for NUL bytes in the first 1024 bytes.
+
+    # Arguments
+
+    * `reader` - Async reader for the file.
+
+    # Returns
+
+    `Ok(true)` if the file is binary, otherwise `Ok(false)`.
+*/
 async fn is_binary(reader: &mut (impl tokio::io::AsyncRead + Unpin)) -> std::io::Result<bool> {
-    // let mut buffer = [0; 1024];
-    // let n = reader.read(&mut buffer).await?;
-    // Ok(buffer[..n].contains(&0))
     let mut bufreader = BufReader::new(reader);
     if let Ok(bytes) = bufreader.fill_buf().await {
         Ok(bytes.iter().take(1024).any(|&b| b == 0))
@@ -308,9 +379,7 @@ async fn search_object(
                 let line = String::from_utf8_lossy(&line_buffer).to_string();
                 byte_progress.inc(line_buffer.len() as u64);
 
-                if (case_sensitive && line.contains(pattern))
-                    || (!case_sensitive && line.to_lowercase().contains(&pattern.to_lowercase()))
-                {
+                if lib::line_matches(&line, pattern, case_sensitive) {
                     if is_binary {
                         break;
                     }
@@ -332,9 +401,7 @@ async fn search_object(
         let line = String::from_utf8_lossy(&line_buffer).to_string();
         byte_progress.inc(line_buffer.len() as u64);
 
-        if (case_sensitive && line.contains(pattern))
-            || (!case_sensitive && line.to_lowercase().contains(&pattern.to_lowercase()))
-        {
+        if lib::line_matches(&line, pattern, case_sensitive) {
             matches.push((line_num, line));
         }
     }
@@ -350,6 +417,18 @@ async fn search_object(
     Ok(matches)
 }
 
+/**
+    Highlights the first match of the pattern in the line using colored output.
+
+    # Arguments
+
+    * `line` - The line of text.
+    * `pattern` - The pattern to highlight.
+
+    # Returns
+
+    The line with the first match of the pattern highlighted.
+*/
 fn highlight_match(line: &str, pattern: &str) -> String {
     let mut result = line.to_string();
     if let Some(start) = line.to_lowercase().find(&pattern.to_lowercase()) {

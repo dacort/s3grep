@@ -2,6 +2,13 @@
 name = "s3grep"
 version = "0.1.0"
 edition = "2021"
+description = "A fast, parallel grep tool for searching logs and unstructured content in AWS S3 buckets."
+license = "MIT"
+repository = "https://github.com/dacort/s3grep"
+homepage = "https://github.com/dacort/s3grep"
+documentation = "https://docs.rs/s3grep"
+keywords = ["s3", "grep", "aws", "cli", "logs"]
+categories = ["command-line-utilities", "text-processing", "cloud"]
 
 [dependencies]
 aws-config = "1.5.13"
@@ -9,9 +16,10 @@ aws-sdk-s3 = "1.68.0"
 aws-smithy-runtime-api = "1.7.3"
 aws-smithy-types = "1.2.12"
 tokio = { version = "1.43.0", features = ["full"] }
-tokio-stream = "0.1"
+# tokio-stream = "0.1"  # Removed: not used in code
 futures = "0.3"
 structopt = "0.3"
 colored = "2.0"
 indicatif = "0.17"
 async-compression = { version = "0.3.12", features = ["tokio", "gzip"] }
+anyhow = "1.0"

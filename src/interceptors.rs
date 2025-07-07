@@ -8,10 +8,15 @@ use aws_smithy_runtime_api::client::runtime_components::RuntimeComponents;
 use aws_smithy_types::config_bag::{ConfigBag, Storable, StoreReplace};
 use aws_smithy_runtime_api::box_error::BoxError;
 
+/// An interceptor for monitoring network requests and responses.
+///
+/// This interceptor records the start time before a request is sent and logs
+/// the response size and duration after the request completes.
 #[derive(Debug)]
 pub(crate) struct NetworkMonitoringInterceptor;
 
 // Wrapper type for Instant
+/// Wrapper type for storing the start time of a request in the config bag.
 #[derive(Debug)]
 struct StartTime(Instant);
 
@@ -20,11 +25,14 @@ impl Storable for StartTime {
 }
 
 impl Intercept for NetworkMonitoringInterceptor {
+    /// Returns the name of the interceptor.
     fn name(&self) -> &'static str {
         "NetworkMonitoringInterceptor"
     }
 
-    // Called before the request is transmitted
+    /// Called before the request is transmitted.
+    ///
+    /// Stores the current time in the config bag for later duration calculation.
     fn read_before_execution(
         &self,
         _context: &BeforeSerializationInterceptorContextRef<'_>,
@@ -42,7 +50,9 @@ impl Intercept for NetworkMonitoringInterceptor {
         Ok(())
     }
 
-    // Called after the response is received and deserialized
+    /// Called after the response is received and deserialized.
+    ///
+    /// Logs the response size and the duration of the request.
     fn read_after_execution(
         &self,
         context: &FinalizerInterceptorContextRef<'_>,
