@@ -7,7 +7,7 @@ license = "MIT"
 repository = "https://github.com/dacort/s3grep"
 homepage = "https://github.com/dacort/s3grep"
 keywords = ["s3", "grep", "aws", "cli", "logs"]
-categories = ["command-line-utilities", "text-processing", "cloud"]
+categories = ["command-line-utilities", "text-processing", "filesystem"]
 publish = true
 
 [dependencies]
