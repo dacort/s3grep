@@ -40,7 +40,7 @@ jobs:
         ports:
           - 4566:4566
         options: >-
-          --health-cmd "curl -f http://localhost:4566/health || exit 1"
+          --health-cmd "curl -f http://localhost:4566/_localstack/health || exit 1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -52,7 +52,7 @@ jobs:
           override: true
       - name: Wait for Localstack
         run: |
-          until curl -s http://localhost:4566/health | grep "\"s3\": \"running\""; do
+          until curl -s http://localhost:4566/_localstack/health | grep "\"s3\": \"running\""; do
             echo "Waiting for Localstack S3..."
             sleep 5
           done

@@ -20,6 +20,7 @@ mod integration_s3 {
             .region(region)
             .endpoint_url(endpoint)
             .credentials_provider(credentials)
+            .behavior_version_latest()
             .build();
         let client = Client::from_conf(config);
 

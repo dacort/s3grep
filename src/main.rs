@@ -23,11 +23,6 @@ enum OutputTarget {
     Stderr,
 }
 
-/**
-    Command-line options for s3grep.
-
-    Use `Opt::from_args()` to parse from command line.
-*/
 #[derive(StructOpt, Debug)]
 #[structopt(name = "s3grep", about = "Fast parallel grep for S3 logs")]
 struct Opt {

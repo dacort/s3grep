@@ -4,7 +4,7 @@ I use `grep` almost daily, but often deal with unstructured content and logs on 
 
 [![CI](https://github.com/dacort/s3grep/actions/workflows/ci.yml/badge.svg)](https://github.com/dacort/s3grep/actions/workflows/ci.yml)
 
-`s3grep` is a blazing fast, parallel CLI tool for searching logs and unstructured content in AWS S3 buckets. It supports .gz decompression, progress bars, and robust error handling—making it ideal for cloud-native log analysis.
+`s3grep` is a parallel CLI tool for searching logs and unstructured content in Amazon S3 buckets. It supports .gz decompression, progress bars, and robust error handling—making it ideal for cloud-native log analysis.
 
 ---
 

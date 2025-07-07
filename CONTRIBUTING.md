@@ -21,6 +21,13 @@ Thank you for your interest in contributing to s3grep! We welcome contributions 
 - Unit tests: `cargo test`
 - Integration tests (S3): Start Localstack, then run `cargo test -- --ignored` (if integration tests are marked as ignored by default).
 
+```bash
+docker run \
+  --rm -d \
+  -p 4566:4566 \
+  localstack/localstack:s3-latest
+```
+
 ## Reporting Issues
 
 - Please include as much detail as possible.
