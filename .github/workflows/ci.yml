@@ -34,28 +34,17 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    services:
-      localstack:
-        image: localstack/localstack:latest
-        ports:
-          - 4566:4566
-        options: >-
-          --health-cmd "curl -f http://localhost:4566/_localstack/health || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
-      - name: Wait for Localstack
-        run: |
-          until curl -s http://localhost:4566/_localstack/health | grep "\"s3\": \"running\""; do
-            echo "Waiting for Localstack S3..."
-            sleep 5
-          done
+      - name: Start LocalStack
+        uses: LocalStack/setup-localstack@v0.2.2
+        with:
+          image-tag: 'latest'
+          install-awslocal: 'false'
       - name: Run tests
         env:
           AWS_ACCESS_KEY_ID: test
