@@ -5,7 +5,7 @@ A CLI tool for searching logs and unstructured content in AWS S3 buckets.
 */
 
 use async_compression::tokio::bufread::GzipDecoder;
-use aws_config::BehaviorVersion;
+use aws_config::{BehaviorVersion, SdkConfig};
 use aws_sdk_s3::Client;
 use colored::*;
 use futures::stream::{self, StreamExt};
@@ -62,9 +62,49 @@ use anyhow::Result;
 async fn main() {
     if let Err(e) = run().await {
         // Print a user-friendly error message and exit with code 1
-        eprintln!("s3grep error: {e:#}");
+        eprintln!("s3grep error: {e:?}");
         std::process::exit(1);
     }
+}
+
+pub async fn create_client_in_bucket_region_reuse_config(
+    config: &SdkConfig,
+    bucket_name: &str,
+) -> Result<Client, Box<dyn std::error::Error + Send + Sync>> {
+    // Create initial client with the default/current region
+    let initial_client = Client::new(config);
+
+    // Try to get bucket region using head_bucket
+    let head_result = initial_client
+        .head_bucket()
+        .bucket(bucket_name)
+        .send()
+        .await;
+
+    let bucket_region = match head_result {
+        Ok(output) => output.bucket_region().map(str::to_owned),
+        Err(err) => err
+            .raw_response()
+            .and_then(|res| res.headers().get("x-amz-bucket-region"))
+            .map(str::to_owned),
+    };
+
+    let region = bucket_region.ok_or("Could not determine bucket region")?;
+
+    // If the region matches the current config region, return the initial client
+    if let Some(current_region) = config.region() {
+        if current_region.as_ref() == region {
+            return Ok(initial_client);
+        }
+    }
+
+    // Create new config with the discovered region, preserving other settings
+    let mut config_builder = config.to_builder();
+    config_builder.set_region(Some(aws_config::Region::new(region)));
+    let new_config = config_builder.build();
+
+    // Create and return client with correct region
+    Ok(Client::new(&new_config))
 }
 
 /// Main application logic for s3grep.
@@ -74,7 +114,7 @@ async fn main() {
 
     Returns Ok(()) on success, or an error on failure.
 */
-async fn run() -> Result<()> {
+async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let opt = Opt::from_args();
 
     // Initialize AWS client
@@ -82,7 +122,7 @@ async fn run() -> Result<()> {
     let _s3_conf = aws_sdk_s3::config::Builder::from(&config)
         .interceptor(NetworkMonitoringInterceptor)
         .build();
-    let client = Client::new(&config);
+    let client = create_client_in_bucket_region_reuse_config(&config, &opt.bucket).await?;
 
     // Create a progress bar that we'll update as we discover objects
     let progress = if !opt.quiet {
@@ -179,7 +219,7 @@ async fn run() -> Result<()> {
                 Err(e) => {
                     print_with_target(
                         progress.as_ref(),
-                        format!("Error listing objects: {e}").as_str(),
+                        format!("Error searching objects: {e}").as_str(),
                         OutputTarget::Stderr,
                     );
                     // Print the error source chain for more detail
@@ -279,7 +319,10 @@ fn list_objects_stream<'a>(
                 None => return None,
             };
 
-            let mut req = client.list_objects_v2().bucket(&bucket).prefix(&prefix);
+            let mut req = client
+                .list_objects_v2()
+                .bucket(bucket.to_owned())
+                .prefix(&prefix);
 
             // Only set continuation token if it's not empty
             if !token.is_empty() {
