@@ -22,11 +22,11 @@ I use `grep` almost daily, but often deal with unstructured content and logs on 
 
 ## Installation
 
-### Pre-built Binaries
+### crates.io
 
-For now, just `git clone` and `cargo build`. 😁
-
-Pre-built binaries (will be) available on the [Releases page](https://github.com/dacort/s3grep/releases).
+```bash
+cargo install s3grep
+```
 
 ---
 
