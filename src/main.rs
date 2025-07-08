@@ -114,7 +114,7 @@ pub async fn create_client_in_bucket_region_reuse_config(
 
     Returns Ok(()) on success, or an error on failure.
 */
-async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>>  {
+async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let opt = Opt::from_args();
 
     // Initialize AWS client
