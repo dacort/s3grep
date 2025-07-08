@@ -1,6 +1,6 @@
 [package]
 name = "s3grep"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "A fast, parallel grep tool for searching logs and unstructured content in AWS S3 buckets."
 license = "MIT"
