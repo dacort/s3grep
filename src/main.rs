@@ -5,7 +5,9 @@ A CLI tool for searching logs and unstructured content in AWS S3 buckets.
 */
 
 use async_compression::tokio::bufread::GzipDecoder;
+use aws_config::meta::region::RegionProviderChain;
 use aws_config::{BehaviorVersion, SdkConfig};
+use aws_sdk_s3::config::Region;
 use aws_sdk_s3::Client;
 use colored::*;
 use futures::stream::{self, StreamExt};
@@ -117,8 +119,15 @@ pub async fn create_client_in_bucket_region_reuse_config(
 async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let opt = Opt::from_args();
 
+    // Get or set a default region, necessary to lookup the bucket region
+    // TODO: Add user opt for region: first_try("opt_region".map(Region::new))
+    let region_provider = RegionProviderChain::default_provider().or_else(Region::new("us-east-1"));
+
     // Initialize AWS client
-    let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
+    let config = aws_config::defaults(BehaviorVersion::latest())
+        .region(region_provider)
+        .load()
+        .await;
     let _s3_conf = aws_sdk_s3::config::Builder::from(&config)
         .interceptor(NetworkMonitoringInterceptor)
         .build();
